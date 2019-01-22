@@ -10,21 +10,25 @@ from pynput.mouse import Listener, Button, Controller
 from _thread import start_new_thread
 import pyperclip
 
+# TODO: multi monitor support
+# FIXME: pynput seems to fail when tskmangr (or sth alike?) has the focus
+
 mouse = Controller()
 
-w_screen = 1920
-h_screen = 1080
-
+# color preview
 w_preview = 180
 h_preview = 50
-offset_prev = 10
 
+offset_prev = 10  # widget offset from cursor
+
+# magnifier window
 w_magn = 180
 h_magn = 120
 offsetX_magn = offset_prev
 offsetY_magn = offset_prev + h_preview
-zoom = 7
+zoom = 6
 max_zoom = 12
+# image scope that gets magnified
 cropX = (w_magn / zoom) // 2
 cropY = (h_magn / zoom) // 2
 
@@ -62,23 +66,21 @@ def key_down(event):
 
 root = tkinter.Tk()
 root.config(cursor="tcross")
-root.overrideredirect(1)
+root.overrideredirect(1)  # makes window fullscreen and on top
 
 root.bind("<Left>", key_left)
 root.bind("<Up>", key_up)
 root.bind("<Right>", key_right)
 root.bind("<Down>", key_down)
-# root.bind("<Button>", button_click_exit_mainloop)
 
 # capture desktop and reformat that picture
 img_raw = ImageGrab.grab()
 img_show = ImageTk.PhotoImage(img_raw)
-# img_zoomed = img_show.resize()
 img = img_raw.convert('RGBA')
 img_magnifier = ImageTk.PhotoImage(img_raw.crop((- cropX, - cropY, +cropX, + cropY)).resize((w_magn, h_magn), Image.NEAREST))
 borders = img_raw.size
 
-canvas = tkinter.Canvas(root, width=w_screen, height=h_screen, highlightthickness=0)
+canvas = tkinter.Canvas(root, width=borders[0], height=borders[1], highlightthickness=0)
 canvas.pack()
 
 widget = tkinter.Canvas(root, width=w_preview + 2 * border_size,
@@ -87,36 +89,39 @@ widget.pack()
 
 window = canvas.create_window(0, 0, anchor='nw', window=widget)
 
-# creating widgets
+# screenshot to maneuver over
 desktop = canvas.create_image(0, 0, anchor="nw", image=img_show)
-
+# red border around widget
 border = widget.create_rectangle((border_size // 2), (border_size // 2), w_preview + (border_size + 1),
             h_preview + h_magn + (border_size + 1), outline=border_color, width=border_size)
+# zooms into cursor position
 magnifier = widget.create_image(border_size, border_size, anchor='nw', image=img_magnifier)
+# marks pixel under cursor
 pixelborder = widget.create_rectangle((border_size // 2) + (w_magn // 2), (border_size // 2) + (h_magn // 2),
             (border_size // 2) + (w_magn // 2) + zoom + 1, (border_size // 2) + (h_magn // 2) + zoom + 1, outline='red')
+# shows a preview of the choosen color
 preview = widget.create_rectangle(border_size, h_magn + border_size, w_preview + border_size, h_magn + h_preview + border_size, width=0)
+# displays hexcode of choosen color in preview window
 hexcode = widget.create_text(w_preview // 2, h_magn + (h_preview // 2), font=font.Font(size=-(h_preview // 2)))
 
 
 def on_click(x, y, button, pressed):
-    # copy hexcode to clipboard and close program
+    """ On left click copies hexcode to clipboard and closes program. """
     if button == Button.left and pressed:
         pyperclip.copy(canvas.itemcget(hexcode, 'text'))
         root.destroy()
 
 
 def on_scroll(x, y, dx, dy):
-    """
-    Scroll to zoom
-    """
+    """ Scroll to zoom """
     global zoom, max_zoom, cropX, cropY
 
-    if dy < 0 and zoom > 1:
+    if dy < 0 and zoom > 2:
         zoom -= 1
     if dy > 0 and zoom < max_zoom:
         zoom += 1
 
+    # update everything zoom affects
     cropX = (w_magn / zoom) // 2
     cropY = (h_magn / zoom) // 2
     on_move(x, y)  # updates screen
@@ -125,11 +130,13 @@ def on_scroll(x, y, dx, dy):
 
 
 def on_move(x, y):
+    """
+    Updates the widget and moves it along with cursor.
+    """
     global borders, img_magnifier
-    # to keep from crashing when cursor out of bounds, position has to be checked
+    # to keep from crashing when cursor is out of bounds, position has to be checked
     if x >= 0 and x < borders[0] and y >= 0 and y < borders[1]:
         # cropping and magnifing image
-
         img_magnifier = ImageTk.PhotoImage(img_raw.crop((x - cropX, y - cropY, x + cropX, y + cropY)).resize((w_magn, h_magn), Image.NEAREST))
 
         # get color under cursor
@@ -149,6 +156,7 @@ def on_move(x, y):
             we = 'w'
             xinv = 1
 
+        # repositions widget if not fully visible
         canvas.itemconfig(window, anchor=ns + we)
         canvas.coords(window, (x + offset_prev * xinv, y + offset_prev * yinv))
 
@@ -158,10 +166,12 @@ def on_move(x, y):
         widget.itemconfig(hexcode, fill=invertColor(color), text=color)
 
 
+# listener and mainloop() can't be run in same thread
 def helper():
     with Listener(on_move=on_move, on_click=on_click, on_scroll=on_scroll) as listener:
         listener.join()
 
 
 start_new_thread(helper, ())
+root.after(1, mouse.move, 0, 1)  # to correctly place widget right from the start
 root.mainloop()
