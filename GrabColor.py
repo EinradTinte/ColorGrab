@@ -108,7 +108,7 @@ hexcode = widget.create_text(w_preview // 2, h_magn + (h_preview // 2), font=fon
 def on_click(x, y, button, pressed):
     """ On left click copies hexcode to clipboard and closes program. """
     if button == Button.left and pressed:
-        pyperclip.copy(canvas.itemcget(hexcode, 'text'))
+        pyperclip.copy(widget.itemcget(hexcode, 'text'))
         root.destroy()
 
 
