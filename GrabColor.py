@@ -13,15 +13,15 @@ import pyperclip
 w_screen = 1920
 h_screen = 1080
 
-w_preview = 150
+w_preview = 180
 h_preview = 50
 offset_prev = 10
 
-w_magn = 150
-h_magn = 100
+w_magn = 180
+h_magn = 120
 offsetX_magn = offset_prev
 offsetY_magn = offset_prev + h_preview
-zoom = 5
+zoom = 6
 cropX = (w_magn / zoom) // 2
 cropY = (h_magn / zoom) // 2
 
@@ -39,6 +39,7 @@ def invertColor(hexcolor):
 
 
 root = tkinter.Tk()
+root.config(cursor="tcross")
 root.overrideredirect(1)
 # root.bind("<Button>", button_click_exit_mainloop)
 
