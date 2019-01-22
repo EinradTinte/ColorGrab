@@ -24,6 +24,7 @@ h_magn = 120
 offsetX_magn = offset_prev
 offsetY_magn = offset_prev + h_preview
 zoom = 7
+max_zoom = 12
 cropX = (w_magn / zoom) // 2
 cropY = (h_magn / zoom) // 2
 
@@ -75,7 +76,7 @@ img_show = ImageTk.PhotoImage(img_raw)
 # img_zoomed = img_show.resize()
 img = img_raw.convert('RGBA')
 img_magnifier = ImageTk.PhotoImage(img_raw.crop((- cropX, - cropY, +cropX, + cropY)).resize((w_magn, h_magn), Image.NEAREST))
-
+borders = img_raw.size
 
 canvas = tkinter.Canvas(root, width=w_screen, height=h_screen, highlightthickness=0)
 canvas.pack()
@@ -90,10 +91,10 @@ window = canvas.create_window(0, 0, anchor='nw', window=widget)
 desktop = canvas.create_image(0, 0, anchor="nw", image=img_show)
 
 border = widget.create_rectangle((border_size // 2), (border_size // 2), w_preview + (border_size + 1),
-                                h_preview + h_magn + (border_size + 1), outline=border_color, width=border_size)
+            h_preview + h_magn + (border_size + 1), outline=border_color, width=border_size)
 magnifier = widget.create_image(border_size, border_size, anchor='nw', image=img_magnifier)
 pixelborder = widget.create_rectangle((border_size // 2) + (w_magn // 2), (border_size // 2) + (h_magn // 2),
-                                (border_size // 2) + (w_magn // 2) + zoom + 1, (border_size // 2) + (h_magn // 2) + zoom + 1, outline='red')
+            (border_size // 2) + (w_magn // 2) + zoom + 1, (border_size // 2) + (h_magn // 2) + zoom + 1, outline='red')
 preview = widget.create_rectangle(border_size, h_magn + border_size, w_preview + border_size, h_magn + h_preview + border_size, width=0)
 hexcode = widget.create_text(w_preview // 2, h_magn + (h_preview // 2), font=font.Font(size=-(h_preview // 2)))
 
@@ -105,40 +106,60 @@ def on_click(x, y, button, pressed):
         root.destroy()
 
 
+def on_scroll(x, y, dx, dy):
+    """
+    Scroll to zoom
+    """
+    global zoom, max_zoom, cropX, cropY
+
+    if dy < 0 and zoom > 1:
+        zoom -= 1
+    if dy > 0 and zoom < max_zoom:
+        zoom += 1
+
+    cropX = (w_magn / zoom) // 2
+    cropY = (h_magn / zoom) // 2
+    on_move(x, y)  # updates screen
+    widget.coords(pixelborder, ((border_size // 2) + (w_magn // 2), (border_size // 2) + (h_magn // 2),
+                (border_size // 2) + (w_magn // 2) + zoom + 1, (border_size // 2) + (h_magn // 2) + zoom + 1))
+
+
 def on_move(x, y):
-    # cropping and magnifing image
-    global img_magnifier  # otherwise img_magnifier is a local variable and gets garbage collected
-    img_magnifier = ImageTk.PhotoImage(img_raw.crop((x - cropX, y - cropY, x + cropX, y + cropY)).resize((w_magn, h_magn), Image.NEAREST))
+    global borders, img_magnifier
+    # to keep from crashing when cursor out of bounds, position has to be checked
+    if x >= 0 and x < borders[0] and y >= 0 and y < borders[1]:
+        # cropping and magnifing image
 
-    # get color under cursor
-    try:
+        img_magnifier = ImageTk.PhotoImage(img_raw.crop((x - cropX, y - cropY, x + cropX, y + cropY)).resize((w_magn, h_magn), Image.NEAREST))
+
+        # get color under cursor
         rgba = img.getpixel((x, y))
-    except:
-        print((x, y))
-    color = rgb2hex(rgba[0], rgba[1], rgba[2])
+        color = rgb2hex(rgba[0], rgba[1], rgba[2])
 
-    if (y - (offset_prev + h_preview + h_magn)) > 0:
-        canvas.itemconfig(window, anchor='sw')
-    else:
-        canvas.itemconfig(window, anchor='nw')
-    # TODO: offset widgets when out of screen
+        if (y - (offset_prev + h_preview + h_magn)) > 0:
+            ns = 's'
+            yinv = -1
+        else:
+            ns = 'n'
+            yinv = 1
+        if (x + (offset_prev + h_preview + h_magn)) > borders[0]:
+            we = 'e'
+            xinv = -1
+        else:
+            we = 'w'
+            xinv = 1
 
-    # reposition widgets
-    # canvas.coords(preview, (x + offset_prev, y - offset_prev * yinv, x + (w_preview + offset_prev), y - (h_preview + offset_prev) * yinv))
-    # canvas.coords(magnifier, (x + offsetX_magn, y - offsetY_magn * yinv))
-    # prevcoords = canvas.coords(preview)
-    # canvas.coords(hexcode, (prevcoords[0] + w_preview // 2, prevcoords[1] + h_preview // 2))
-    # widget.config(offset="{:},{:}".format(x + offset_prev, y - offset_prev * yinv))
-    canvas.coords(window, (x + offset_prev, y + offset_prev))
+        canvas.itemconfig(window, anchor=ns + we)
+        canvas.coords(window, (x + offset_prev * xinv, y + offset_prev * yinv))
 
-    # changes values
-    widget.itemconfig(magnifier, image=img_magnifier)
-    widget.itemconfig(preview, fill=color)
-    widget.itemconfig(hexcode, fill=invertColor(color), text=color)
+        # changes values
+        widget.itemconfig(magnifier, image=img_magnifier)
+        widget.itemconfig(preview, fill=color)
+        widget.itemconfig(hexcode, fill=invertColor(color), text=color)
 
 
 def helper():
-    with Listener(on_move=on_move, on_click=on_click) as listener:
+    with Listener(on_move=on_move, on_click=on_click, on_scroll=on_scroll) as listener:
         listener.join()
 
 
