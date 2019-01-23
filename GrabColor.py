@@ -188,9 +188,12 @@ def on_scroll(x, y, dx, dy):
     # update everything zoom affects
     cropX = (w_magn / zoom) // 2
     cropY = (h_magn / zoom) // 2
-    on_move(x, y)  # updates screen
-    widget.coords(pixelborder, ((border_size // 2) + (w_magn // 2), (border_size // 2) + (h_magn // 2),
-                (border_size // 2) + (w_magn // 2) + zoom + 1, (border_size // 2) + (h_magn // 2) + zoom + 1))
+    # updates widget
+    on_move(x, y)
+    hlp = cursor_sizes[cursor_size] // 2
+    widget.coords(pixelborder, ((border_size // 2) + (w_magn // 2) - (zoom * hlp), (border_size // 2) + (h_magn // 2) - (zoom * hlp),
+                (border_size // 2) + (w_magn // 2) + (zoom * (hlp + 1)) + 1, (border_size // 2) + (h_magn // 2) + (zoom * (hlp + 1)) + 1))
+    
 
 
 def on_move(x, y):
