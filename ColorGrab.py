@@ -193,7 +193,6 @@ def on_scroll(x, y, dx, dy):
     hlp = cursor_sizes[cursor_size] // 2
     widget.coords(pixelborder, ((border_size // 2) + (w_magn // 2) - (zoom * hlp), (border_size // 2) + (h_magn // 2) - (zoom * hlp),
                 (border_size // 2) + (w_magn // 2) + (zoom * (hlp + 1)) + 1, (border_size // 2) + (h_magn // 2) + (zoom * (hlp + 1)) + 1))
-    
 
 
 def on_move(x, y):
