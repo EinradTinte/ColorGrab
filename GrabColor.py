@@ -10,6 +10,26 @@ from pynput.mouse import Listener, Button, Controller
 from _thread import start_new_thread
 import pyperclip
 
+"""
+    Takes a screenshot from your desktop and lets you grab the hexcode of selected color to store in clipboard.
+
+    The widget displays the currently selected color as well as its hexcode and a magnifier for better selection.
+
+    --- Controls ---
+
+    - Move Cursor:
+        Move cursor to select pixel(s).
+    - Left Click:
+        Save currently displayed hexcode to clipboard and terminate program.
+    - Right Click:
+        Change sample size of pixels to determine selected color.
+        (At the current version this simply takes the average color of all pixels.)
+    - Scroll:
+        Increase/Decrease magnification.
+    - Arrow Keys:
+        Move cursor 1 pixel in respective direction
+"""
+
 # TODO: multi monitor support
 # FIXME: pynput seems to fail when tskmangr (or sth alike?) has the focus
 
@@ -35,6 +55,9 @@ cropY = (h_magn / zoom) // 2
 border_size = 2
 border_color = 'red'
 
+cursor_sizes = [1, 3, 5, 7]
+cursor_size = 0
+
 
 def rgb2hex(r, g, b):
     """
@@ -43,9 +66,17 @@ def rgb2hex(r, g, b):
     return '#{:02x}{:02x}{:02x}'.format(r, g, b)
 
 
+def hex2rgb(hex):
+    return tuple(int(hex[i:i + 2], 16) for i in (1, 3, 5))
+
+
 def invertColor(hexcolor):
     table = str.maketrans('0123456789abcdef', 'fedcba9876543210')
     return '#' + hexcolor[1:].lower().translate(table).upper()
+
+
+def getBrightness(r, g, b):
+    return ((r * 299) + (g * 587) + (b * 114)) / 1000
 
 
 def key_left(event):
@@ -76,7 +107,7 @@ root.bind("<Down>", key_down)
 # capture desktop and reformat that picture
 img_raw = ImageGrab.grab()
 img_show = ImageTk.PhotoImage(img_raw)
-img = img_raw.convert('RGBA')
+# img = img_raw.convert('RGBA')
 img_magnifier = ImageTk.PhotoImage(img_raw.crop((- cropX, - cropY, +cropX, + cropY)).resize((w_magn, h_magn), Image.NEAREST))
 borders = img_raw.size
 
@@ -105,15 +136,48 @@ preview = widget.create_rectangle(border_size, h_magn + border_size, w_preview +
 hexcode = widget.create_text(w_preview // 2, h_magn + (h_preview // 2), font=font.Font(size=-(h_preview // 2)))
 
 
+def mergeColors(colors):
+    """ Returns the average of a rgb list. """
+    r = sum(i for i, h, j in colors) // len(colors)
+    g = sum(h for i, h, j in colors) // len(colors)
+    b = sum(j for i, h, j in colors) // len(colors)
+    return tuple((r, g, b))
+
+
+def getColor(x, y):
+    """ Returns the hex color under the cursor position. Takes sample size into account. """
+    colors = []
+    hlp = cursor_sizes[cursor_size] // 2
+    for i in range(cursor_sizes[cursor_size]):
+        for j in range(cursor_sizes[cursor_size]):
+            if 0 <= x < borders[0] and 0 <= y < borders[1]:
+                colors.append(img_raw.getpixel((x - hlp + i, y - hlp + j)))
+    return rgb2hex(*mergeColors(colors))
+
+
 def on_click(x, y, button, pressed):
-    """ On left click copies hexcode to clipboard and closes program. """
+    """
+    On left click copies hexcode to clipboard and closes program.
+    On right click changes the sample size.
+    """
     if button == Button.left and pressed:
         pyperclip.copy(widget.itemcget(hexcode, 'text'))
         root.destroy()
+    if button == Button.right and pressed:
+        global cursor_size
+        cursor_size += 1
+        if cursor_size >= len(cursor_sizes):
+            cursor_size = 0
+        hlp = cursor_sizes[cursor_size] // 2
+        # resize pixelborder
+        widget.coords(pixelborder, ((border_size // 2) + (w_magn // 2) - (zoom * hlp), (border_size // 2) + (h_magn // 2) - (zoom * hlp),
+                    (border_size // 2) + (w_magn // 2) + (zoom * (hlp + 1)) + 1, (border_size // 2) + (h_magn // 2) + (zoom * (hlp + 1)) + 1))
+        # updates widget
+        on_move(x, y)
 
 
 def on_scroll(x, y, dx, dy):
-    """ Scroll to zoom """
+    """ Scroll to zoom. """
     global zoom, max_zoom, cropX, cropY
 
     if dy < 0 and zoom > 2:
@@ -133,17 +197,16 @@ def on_move(x, y):
     """
     Updates the widget and moves it along with cursor.
     """
-    global borders, img_magnifier
+    global img_magnifier
     # to keep from crashing when cursor is out of bounds, position has to be checked
-    if x >= 0 and x < borders[0] and y >= 0 and y < borders[1]:
+    if 0 <= x < borders[0] and 0 <= y < borders[1]:
         # cropping and magnifing image
-        img_magnifier = ImageTk.PhotoImage(img_raw.crop((x - cropX, y - cropY, x + cropX, y + cropY)).resize((w_magn, h_magn), Image.NEAREST))
+        new_img_magnifier = ImageTk.PhotoImage(img_raw.crop((x - cropX, y - cropY, x + cropX, y + cropY)).resize((w_magn, h_magn), Image.NEAREST))
 
         # get color under cursor
-        rgba = img.getpixel((x, y))
-        color = rgb2hex(rgba[0], rgba[1], rgba[2])
+        color = getColor(x, y)
 
-        if (y - (offset_prev + h_preview + h_magn)) > 0:
+        if (y + (offset_prev + h_preview + h_magn)) > borders[1]:
             ns = 's'
             yinv = -1
         else:
@@ -161,9 +224,15 @@ def on_move(x, y):
         canvas.coords(window, (x + offset_prev * xinv, y + offset_prev * yinv))
 
         # changes values
-        widget.itemconfig(magnifier, image=img_magnifier)
+        widget.itemconfig(magnifier, image=new_img_magnifier)
+        img_magnifier = new_img_magnifier
         widget.itemconfig(preview, fill=color)
-        widget.itemconfig(hexcode, fill=invertColor(color), text=color)
+        # adjusts text color to preview color brightness
+        if getBrightness(*hex2rgb(color)) > 123:
+            textcolor = 'black'
+        else:
+            textcolor = 'white'
+        widget.itemconfig(hexcode, fill=textcolor, text=color)
 
 
 # listener and mainloop() can't be run in same thread
